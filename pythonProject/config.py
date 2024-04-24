@@ -1,6 +1,7 @@
 from configparser import ConfigParser
 
-def load_config(filename='database.ini', section='postgresql'):
+
+def load_config(filename='/Users/bakan/Documents/Projects/EgeSage/pythonProject/database.ini', section='postgresql'):
     parser = ConfigParser()
     parser.read(filename)
 
@@ -15,6 +16,6 @@ def load_config(filename='database.ini', section='postgresql'):
 
     return config
 
-if __name__ == '__main__':
-    config = load_config()
-    print(config)
+# if __name__ == '__main__':
+#     config = load_config()
+#     print(config)

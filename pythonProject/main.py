@@ -15,21 +15,31 @@ def send_welcome(message):
 	user_id = message.from_user.id
 	user_name = message.from_user.username
 
-	connection = None
-	try:
-		# Здесь я подключаюсь к базе данных
-		config = load_config()
-		connection = psycopg2.connect(**config)
-		with connection.cursor() as cursor:
-			cursor.execute(
-				"INSERT INTO users (user_id, username) VALUES (%s, %s)", (user_id, user_name)
-			)
-	except Exception as _ex:
-		print("[INFO] ERROR: ", _ex)
-	finally:
-		if connection is not None:
-			connection.close()
-			print("[INFO] PostgreSQL connection closed")
+	config = load_config()
+	connection = psycopg2.connect(**config)
+	cursor = connection.cursor()
+	cursor.execute(
+					"INSERT INTO users (user_id, username) VALUES (%s, %s)", (user_id, user_name)
+				)
+	connection.commit()
+	cursor.close()
+	connection.close()
+
+	# connection = None
+	# try:
+	# 	# Здесь я подключаюсь к базе данных
+	# 	config = load_config()
+	# 	connection = psycopg2.connect(**config)
+	# 	with connection.cursor() as cursor:
+	# 		cursor.execute(
+	# 			"INSERT INTO users (user_id, username) VALUES (%s, %s)", (user_id, user_name)
+	# 		)
+	# except Exception as _ex:
+	# 	print("[INFO] ERROR: ", _ex)
+	# finally:
+	# 	if connection is not None:
+	# 		connection.close()
+	# 		print("[INFO] PostgreSQL connection closed")
 
 	markup = types.InlineKeyboardMarkup()
 	markup.add(types.InlineKeyboardButton('Давай начнем', callback_data='after_start'))
