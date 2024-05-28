@@ -1,39 +1,8 @@
-# import psycopg2
-# from connect import *
-# from questions_id import *
-#
-# def questions_in_data_base(questions_id):
-#
-#     table = questions_id["table"]
-#     items_list = list(questions_id.items())
-#
-#     config = load_config()
-#     connection = psycopg2.connect(**config)
-#     cursor = connection.cursor()
-#
-#     # Создаю базу данных для заполнения, если ее еще нет
-#     cursor.execute(f"CREATE TABLE IF NOT EXISTS {table} (id SERIAL PRIMARY KEY, question VARCHAR(128) NOT NULL, answer VARCHAR(4) NOT NULL);")
-#     cursor.execute(f"DELETE FROM {table};")
-#     cursor.execute(f"ALTER SEQUENCE {table}_id_seq RESTART WITH 1;")
-#
-#     # Заполняю базу данных вопросами и ответами
-#     for key, value in items_list[1:]:
-#         cursor.execute(
-#             f"INSERT INTO {table} (question, answer) VALUES (%s, %s);",(key, value)
-#         )
-#
-#     connection.commit()
-#     cursor.close()
-#     connection.close()
-#
-# questions_in_data_base(questions_1)
-#
-
 import psycopg2
 from connect import *
 from questions_id import *
 
-def questions_in_data_base(questions_id):
+def questions_in_data_base_1(questions_id):
 
     question_id = questions_id["question"]
     items_list = list(questions_id.items())
@@ -42,14 +11,66 @@ def questions_in_data_base(questions_id):
     connection = psycopg2.connect(**config)
     cursor = connection.cursor()
 
+    question_num = 1
+
     # Заполняю базу данных вопросами и ответами
     for key, value in items_list[1:]:
+        id = str(question_id) + "_" + str(question_num)
         cursor.execute(
-            f"INSERT INTO questions (question_id, question, answer) VALUES (%s, %s, %s) ON CONFLICT (question) DO NOTHING;",
-            (question_id, key, value))
+            f"INSERT INTO questions_1 (id, question, answer) VALUES (%s, %s, %s) ON CONFLICT (question) DO NOTHING;",
+            (id, key, value))
+        question_num += 1
 
     connection.commit()
     cursor.close()
     connection.close()
 
-questions_in_data_base(questions_1)
+
+def question_in_data_base_2(questions_id):
+
+    question_id = questions_id["question"]
+    items_list = list(questions_id.items())
+
+    config = load_config()
+    connection = psycopg2.connect(**config)
+    cursor = connection.cursor()
+
+    question_num = 1
+
+    for key, value in items_list[1:]:
+        id = str(question_id) + "_" + str(question_num)
+        cursor.execute(
+            f"INSERT INTO questions_2 (id, question, answer) VALUES (%s, %s, %s) ON CONFLICT (question) DO NOTHING;",
+            (id, key, value))
+        question_num += 1
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+
+def question_in_data_base_3(questions_id):
+
+    question_id = questions_id["question"]
+    items_list = list(questions_id.items())
+
+    config = load_config()
+    connection = psycopg2.connect(**config)
+    cursor = connection.cursor()
+
+    question_num = 1
+
+    for key, value in items_list[1:]:
+        id = str(question_id) + "_" + str(question_num)
+        cursor.execute(
+            f"INSERT INTO questions_3 (id, question, answer) VALUES (%s, %s, %s) ON CONFLICT (question) DO NOTHING;",
+            (id, key, value))
+        question_num += 1
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+# questions_in_data_base_1(questions_1)
+# question_in_data_base_2(questions_2)
+question_in_data_base_3(questions_3)

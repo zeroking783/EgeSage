@@ -1,9 +1,11 @@
 from connect import *
 from telebot import *
+from telegram import ReplyKeyboardMarkup
 from telebot import types
 import datetime
 import random
 from statistics import *
+import time
 
 
 bot = telebot.TeleBot('6584407780:AAE8G93fffaZUE-tBQoXFXS70DBQejmgLO4')
@@ -24,7 +26,7 @@ def generate_all_answers_on_question_1(callback):
 	answers.append(cursor.fetchone()[0])
 
 	while len(answers) < 8:
-		cursor.execute("SELECT answer FROM questions WHERE question_id = (SELECT question_id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1) ORDER BY RANDOM() LIMIT 1", (callback.from_user.id, ))
+		cursor.execute("SELECT answer FROM questions_1 ORDER BY RANDOM() LIMIT 1")
 		res = cursor.fetchone()[0]
 		if res not in answers:
 			answers.append(res)
@@ -41,6 +43,47 @@ def generate_all_answers_on_question_1(callback):
 	connection.commit()
 	cursor.close()
 	connection.close()
+
+
+def generate_all_answers_on_question_3(callback):
+
+	# Подключение к базе данных
+	config = load_config()
+	connection = psycopg2.connect(**config)
+	cursor = connection.cursor()
+
+	# Массив в котором будут хранится все ответы
+	answers = []
+
+	# Добавляю в answers id правильного ответа
+	cursor.execute("SELECT id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1",
+				   (callback.from_user.id, ))
+	answer_true = cursor.fetchone()[0]
+	answers.append(answer_true)
+	connection.commit()
+
+	while len(answers) < 4:
+		cursor.execute("SELECT id FROM questions_3 ORDER BY RANDOM() LIMIT 1")
+		res = cursor.fetchone()[0]
+		if res not in answers:
+			answers.append(res)
+		else:
+			continue
+
+	random.shuffle(answers)
+
+	# Здесь еще будет часть по добавлению правильного ответа
+	position_true = answers.index(answer_true)
+
+	cursor.execute("UPDATE results SET answer_true = %s, answer_all = %s WHERE user_id = %s AND "
+				   "answer_num_all = (SELECT answer_num_all FROM results "
+				   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
+				   (position_true, answers, callback.from_user.id, callback.from_user.id))
+
+	connection.commit()
+	cursor.close()
+	connection.close()
+
 
 
 # def clear_chat(message):
@@ -62,10 +105,12 @@ def send_welcome(message):
 	config = load_config()
 	connection = psycopg2.connect(**config)
 	cursor = connection.cursor()
+	current_time = time.time()
+
 	cursor.execute(
-					"INSERT INTO users (user_id, username, user_state) VALUES (%s, %s, %s) ON CONFLICT (user_id)"
+					"INSERT INTO users (user_id, username, user_state, last_menu_interaction) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id)"
 							" DO UPDATE SET username = EXCLUDED.username, user_state = EXCLUDED.user_state",
-						(message.from_user.id, message.from_user.username, 'start')
+						(message.from_user.id, message.from_user.username, 'start', current_time)
 					)
 
 	cursor.execute("INSERT INTO statistics (user_id) VALUES (%s) ON CONFLICT (user_id)"
@@ -76,58 +121,126 @@ def send_welcome(message):
 	connection.close()
 
 	markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-	btn_menu = types.KeyboardButton('Меню')
+	btn_menu = types.KeyboardButton('💬 Меню')
 	markup.row(btn_menu)
-	bot.send_message(message.chat.id, 'Привет! Добро пожаловать в бота, который поможет тебе подготовиться к ЕГЭ по истории. '
-									  'Здесь ты найдешь задания, которые помогут тебе запомнить нужную информацию, даже если ты не являешься историческим гуру. '
-									  'Давай вместе сделаем шаг к успешной сдаче экзамена!', reply_markup=markup)
-
 	bot.delete_message(message.chat.id, message.message_id)
+	bot.send_message(message.chat.id, 'Привет! Добро пожаловать в бота, который поможет тебе подготовиться к ЕГЭ по истории. \n \n'
+									  'Нажми на кнопку «*💬 Меню*», чтобы вызвать панель со всеми функциями',
+					 				  reply_markup=markup, parse_mode="Markdown")
 
 
 # Здесь будет главное меню
 @bot.message_handler(content_types=['text'])
 def on_click(message):
 
-	# clear_chat(message	)
-
 	# Подключаемся к базе данных
 	config = load_config()
 	connection = psycopg2.connect(**config)
 	cursor = connection.cursor()
 
-	# Получаю состояние юзера
-	cursor.execute("SELECT user_state FROM users WHERE user_id = %s", (message.from_user.id, ))
-	user_state = (cursor.fetchone())[0]
+	if message.text != '💬 Меню':
+		bot.delete_message(message.chat.id, message.message_id)
+	elif message.text == '💬 Меню':
 
-	if 'settings_test' in user_state and message.text == 'Меню':
-		bot.delete_message(message.chat.id, message.message_id - 1)
+		# Получаю состояние юзера
+		cursor.execute("SELECT user_state, last_menu_interaction FROM users WHERE user_id = %s", (message.from_user.id, ))
+		user_data = cursor.fetchone()
+		user_state = user_data[0]
+		last_menu_interaction = user_data[1]
 
-	if 'profil' in user_state and message.text == "Меню":
-		bot.delete_message(message.chat.id, message.message_id - 1)
+		current_time = time.time()
 
-	if 'menu' in user_state and message.text == "Меню":
-		bot.delete_message(message.chat.id, message.message_id - 1)
+		if current_time - last_menu_interaction < 4:
+			return
+		else:
+			try:
+				bot.delete_message(message.chat.id, message.message_id)
+			except
 
-	if message.text == 'Меню':
+
+
+
+	if 'start' in user_state and message.text == '💬 Меню':
+
+		# bot.delete_message(message.chat.id, message.message_id)
 
 		current_date = datetime.datetime.now().strftime('%Y-%m-%d')
 		current_time = datetime.datetime.now().strftime('%H:%M:%S')
 
 		# Обновляем состояние пользователя на
-		cursor.execute("UPDATE users SET user_state = %s, last_date_start_menu = %s, last_time_start_menu = %s, selected_questions = %s, selected_amount = %s WHERE user_id = %s",
-					   ('menu', current_date, current_time, 0, 0, message.from_user.id))
+		cursor.execute(
+			"UPDATE users SET user_state = %s, last_date_start_menu = %s, last_time_start_menu = %s, selected_questions = %s, selected_amount = %s WHERE user_id = %s",
+			('menu', current_date, current_time, 0, 0, message.from_user.id))
+		connection.commit()
 
 		# Генерация кнопок и удаление последнего сообщения
-		bot.delete_message(message.chat.id, message.message_id)
 		markup = types.InlineKeyboardMarkup()
-		btn_tests = types.InlineKeyboardButton('Выполнять задания', callback_data='settings_tests')
-		btn_profil = types.InlineKeyboardButton('Мой профиль', callback_data='profil')
-		btn_feedback = types.InlineKeyboardButton('Оставить отзыв/поддержка', callback_data='feedback')
+		btn_tests = types.InlineKeyboardButton('📝 Выполнять задания', callback_data='settings_tests')
+		btn_profil = types.InlineKeyboardButton('👤 Мой профиль', callback_data='profil')
+		btn_feedback = types.InlineKeyboardButton('🛎 Оставить отзыв/поддержка', callback_data='feedback')
 		markup.row(btn_tests)
 		markup.row(btn_profil)
 		markup.row(btn_feedback)
-		bot.send_message(message.chat.id, "Меню", reply_markup=markup)
+		bot.send_message(message.chat.id, "*💬 Меню*", reply_markup=markup,
+							  parse_mode="Markdown")
+
+	if 'settings_test' in user_state and message.text == '💬 Меню':
+
+		bot.delete_message(message.chat.id, message.message_id)
+
+
+		current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+		current_time = datetime.datetime.now().strftime('%H:%M:%S')
+
+		# Обновляем состояние пользователя на
+		cursor.execute(
+			"UPDATE users SET user_state = %s, last_date_start_menu = %s, last_time_start_menu = %s, selected_questions = %s, selected_amount = %s WHERE user_id = %s",
+			('menu', current_date, current_time, 0, 0, message.from_user.id))
+		connection.commit()
+
+		# Генерация кнопок и удаление последнего сообщения
+		markup = types.InlineKeyboardMarkup()
+		btn_tests = types.InlineKeyboardButton('📝 Выполнять задания', callback_data='settings_tests')
+		btn_profil = types.InlineKeyboardButton('👤 Мой профиль', callback_data='profil')
+		btn_feedback = types.InlineKeyboardButton('🛎 Оставить отзыв/поддержка', callback_data='feedback')
+		markup.row(btn_tests)
+		markup.row(btn_profil)
+		markup.row(btn_feedback)
+
+		bot.edit_message_text("*💬 Меню*", message.chat.id, message.message_id - 1, reply_markup=markup, parse_mode="Markdown")
+
+
+	if 'profil' in user_state and message.text == '💬 Меню':
+
+
+		current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+		current_time = datetime.datetime.now().strftime('%H:%M:%S')
+
+		# Обновляем состояние пользователя на
+		cursor.execute(
+			"UPDATE users SET user_state = %s, last_date_start_menu = %s, last_time_start_menu = %s, selected_questions = %s, selected_amount = %s WHERE user_id = %s",
+			('menu', current_date, current_time, 0, 0, message.from_user.id))
+		connection.commit()
+
+		# Генерация кнопок и удаление последнего сообщения
+		markup = types.InlineKeyboardMarkup()
+		btn_tests = types.InlineKeyboardButton('📝 Выполнять задания', callback_data='settings_tests')
+		btn_profil = types.InlineKeyboardButton('👤 Мой профиль', callback_data='profil')
+		btn_feedback = types.InlineKeyboardButton('🛎 Оставить отзыв/поддержка', callback_data='feedback')
+		markup.row(btn_tests)
+		markup.row(btn_profil)
+		markup.row(btn_feedback)
+
+		bot.edit_message_text("*💬 Меню*", message.chat.id, message.message_id - 1, reply_markup=markup, parse_mode="Markdown")
+
+		bot.delete_message(message.chat.id, message.message_id)
+
+
+	if 'menu' in user_state and message.text == '💬 Меню':
+
+		bot.delete_message(message.chat.id, message.message_id)
+
+
 
 	# Закрываем соединение с базой данных
 	connection.commit()
@@ -155,7 +268,7 @@ def settings_tests(callback):
 	markup = types.InlineKeyboardMarkup()
 	btn_tasks = types.InlineKeyboardButton("Выбрать номер задания", callback_data='choise_questions')
 	btn_amount = types.InlineKeyboardButton("Выбрать количество номеров", callback_data='choise_amount')
-	btn_start_test = types.InlineKeyboardButton('Начать', callback_data='start_test')
+	btn_start_test = types.InlineKeyboardButton('Начать ➡️', callback_data='start_test')
 	markup.row(btn_tasks)
 	markup.row(btn_amount)
 	markup.row(btn_start_test)
@@ -168,21 +281,21 @@ def settings_tests(callback):
 
 	# Отправляю сообщение к кнопкам с выбранными заданиями
 	if selected_amount == 0 and selected_questions == 0:
-		message_text = "Ты сейчас находишься в меню настройки тестов\nЗадание ЕГЭ не выбрано \nКоличество заданий не выбрано"
+		message_text = "⚙️ *Настройка теста* \n \nВыбери задание ЕГЭ 📝 \nВыбери количество заданий 🔢"
 	elif selected_amount == -1 and selected_questions == 0:
-		message_text = "Ты сейчас находишься в меню настройки тестов\nЗадание ЕГЭ не выбрано \nВыбран бесконечный режим"
+		message_text = "⚙️ *Настройка теста* \n \nВыбери задание ЕГЭ 📝 \nВыбран бесконечный режим ✅"
 	elif selected_amount != 0 and selected_amount != -1 and selected_questions == 0:
-		message_text = f"Ты сейчас находишься в меню настройки тестов\nЗадание ЕГЭ не выбрано \nКоличество заданий ЕГЭ - {selected_amount}"
+		message_text = f"⚙️ *Настройка теста* \n \nВыбери задание ЕГЭ 📝 \nКоличество заданий ЕГЭ - {selected_amount} ✅"
 	elif selected_questions != 0 and selected_amount == 0:
-		message_text = f"Ты сейчас находишься в меню настройки тестов\nВыбрано задание ЕГЭ - {selected_questions} \nКоличество заданий не выбрано"
+		message_text = f"⚙️ *Настройка теста* \n \nВыбрано задание ЕГЭ - {selected_questions} ✅ \nВыбери количество заданий 🔢"
 	elif selected_questions != 0 and selected_amount == -1:
-		message_text = f"Ты сейчас находишься в меню настройки тестов\nВыбрано задание ЕГЭ - {selected_questions} \nВыбран бесконечный режим"
+		message_text = f"⚙️ *Настройка теста* \n \nВыбрано задание ЕГЭ - {selected_questions} ✅ \nВыбран бесконечный режим ✅"
 	elif selected_questions != 0:
-		message_text = f"Ты сейчас находишься в меню настройки тестов\nВыбрано задание ЕГЭ - {selected_questions} \nКоличество заданий ЕГЭ - {selected_amount}"
+		message_text = f"⚙️ *Настройка теста* \n \nВыбрано задание ЕГЭ - {selected_questions} ✅ \nКоличество заданий ЕГЭ - {selected_amount} ✅"
 	else:
-		message_text = "Ты сейчас находишься в меню настройки тестов"
+		message_text = "⚙️ *Настройка теста* "
 
-	bot.edit_message_text(message_text, callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+	bot.edit_message_text(message_text, callback.message.chat.id, callback.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
 	# Закрываем соединение с базой данных
 	connection.commit()
@@ -196,20 +309,20 @@ def select_num_question(callback):
 
 	# Здесь я отправляю сообщение с выбором задания
 	markup = types.InlineKeyboardMarkup()
-	btn_question_num_1 = types.InlineKeyboardButton("1", callback_data='btn_question_num_1')
-	btn_question_num_2 = types.InlineKeyboardButton("2", callback_data='btn_question_num_2')
-	btn_question_num_3 = types.InlineKeyboardButton("3", callback_data='btn_question_num_3')
-	markup.row(btn_question_num_1, btn_question_num_2, btn_question_num_3)
-	btn_back = types.InlineKeyboardButton("Вернуться назад", callback_data='come_back_to_settings_test')
+	btn_question_num_1 = types.InlineKeyboardButton("1 (даты 📅)", callback_data='btn_question_num_1')
+	markup.row(btn_question_num_1)
+	btn_question_num_3 = types.InlineKeyboardButton("3 (факт - явление 🔍)", callback_data='btn_question_num_3')
+	markup.row(btn_question_num_3)
+	btn_back = types.InlineKeyboardButton("⬅️ Вернуться назад", callback_data='come_back_to_settings_test')
 	markup.row(btn_back)
-	bot.edit_message_text("Выберите номер задания", callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+	bot.edit_message_text("Выберите номер задания 📝", callback.message.chat.id, callback.message.message_id, reply_markup=markup)
 
 
 # В этой части я обрабатываю разом каждый из возможных выбранных номеров заданий
 @bot.callback_query_handler(func=lambda call: call.data.startswith('btn_question_num_'))
 def btn_question_num_to_database(callback):
-	callback_data = callback.data.split('_')
 
+	callback_data = callback.data.split('_')
 
 	# Подключаемся к базе данных
 	config = load_config()
@@ -230,18 +343,16 @@ def btn_question_num_to_database(callback):
 @bot.callback_query_handler(func=lambda callback: callback.data == 'choise_amount')
 def select_choise_amount(callback):
 
-
-
 	markup = types.InlineKeyboardMarkup()
 	btn_choise_question_5 = types.InlineKeyboardButton("5", callback_data = "btn_choise_question_5")
 	btn_choise_question_10 = types.InlineKeyboardButton("10", callback_data="btn_choise_question_10")
 	btn_choise_question_20 = types.InlineKeyboardButton("20", callback_data="btn_choise_question_20")
 	markup.row(btn_choise_question_5, btn_choise_question_10, btn_choise_question_20)
-	btn_choise_question_infinity = types.InlineKeyboardButton("Бесконечный режим", callback_data="btn_choise_question_infinity")
+	btn_choise_question_infinity = types.InlineKeyboardButton("Бесконечный режим ♾️", callback_data="btn_choise_question_infinity")
 	markup.row(btn_choise_question_infinity)
-	btn_back = types.InlineKeyboardButton("Вернуться назад", callback_data='come_back_to_settings_test')
+	btn_back = types.InlineKeyboardButton("⬅️ Вернуться назад", callback_data='come_back_to_settings_test')
 	markup.row(btn_back)
-	bot.edit_message_text("Выберите количество вопросов", callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+	bot.edit_message_text("Выберите количество вопросов 🔢", callback.message.chat.id, callback.message.message_id, reply_markup=markup)
 
 
 # Здесь я обрабатываю выбранное пользователем количество номеров
@@ -284,6 +395,14 @@ def start_test(callback):
 	connection = psycopg2.connect(**config)
 	cursor = connection.cursor()
 
+	cursor.execute("SELECT selected_questions, selected_amount FROM users WHERE user_id = %s", (callback.from_user.id, ))
+	selected = cursor.fetchone()
+	if selected[0] == 0 or selected[1] == 0:
+		bot.answer_callback_query(callback_query_id=callback.id,
+								  text="Перед началом теста выберите количество вопросов и номер задания из ЕГЭ.", show_alert=True)
+		return
+
+
 	current_date = datetime.datetime.now().strftime('%Y-%m-%d')
 	current_time = datetime.datetime.now().strftime('%H:%M:%S')
 
@@ -291,11 +410,15 @@ def start_test(callback):
 	cursor.execute("UPDATE statistics SET last_date_start_test = %s, last_time_start_test = %s WHERE user_id = %s", (current_date, current_time, callback.from_user.id))
 	connection.commit()
 
-	cursor.execute("SELECT selected_amount FROM users WHERE user_id = %s", (callback.from_user.id, ))
+	cursor.execute("SELECT selected_questions FROM users WHERE user_id = %s", (callback.from_user.id, ))
+	choise_question = cursor.fetchone()[0]
 	connection.commit()
 
-	if cursor.fetchone()[0] == -1:
+	if choise_question == 1:
 		test_send_question_1(callback)
+	if choise_question == 3:
+		test_send_question_3(callback)
+
 
 
 def test_send_question_1(callback):
@@ -306,9 +429,9 @@ def test_send_question_1(callback):
 	cursor = connection.cursor()
 
 	# Выбираю сам вопрос рандомно и сразу записываю его в results
-	cursor.execute("SELECT id, question_id, question, answer FROM questions WHERE question_id = (SELECT selected_questions FROM users WHERE user_id = %s) ORDER BY RANDOM() LIMIT 1", (callback.from_user.id, ))
+	cursor.execute("SELECT id, question, answer FROM questions_1 ORDER BY RANDOM() LIMIT 1")
 	answer = cursor.fetchone()
-	cursor.execute("INSERT INTO results (user_id, id, question_id, answer_true) VALUES (%s, %s, %s, %s)", (callback.from_user.id, answer[0], answer[1], answer[3]))
+	cursor.execute("INSERT INTO results (user_id, id, answer_true) VALUES (%s, %s, %s)", (callback.from_user.id, answer[0], answer[2]))
 
 	connection.commit()
 
@@ -330,18 +453,69 @@ def test_send_question_1(callback):
 	btn_choise_res_answer_6 = types.InlineKeyboardButton(answers[6], callback_data="btn_choise_res_answer_6")
 	btn_choise_res_answer_7 = types.InlineKeyboardButton(answers[7], callback_data="btn_choise_res_answer_7")
 	markup.row(btn_choise_res_answer_4, btn_choise_res_answer_5, btn_choise_res_answer_6, btn_choise_res_answer_7)
-	bot.edit_message_text(answer[2], callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+	bot.edit_message_text(answer[1], callback.message.chat.id, callback.message.message_id, reply_markup=markup)
 
 	connection.commit()
 	cursor.close()
 	connection.close()
+
+def test_send_question_3(callback):
+
+	config = load_config()
+	connection = psycopg2.connect(**config)
+	cursor = connection.cursor()
+
+	cursor.execute("SELECT id, question, answer FROM questions_3 ORDER BY RANDOM() LIMIT 1")
+	answer = cursor.fetchone()
+	cursor.execute("INSERT INTO results (user_id, id) VALUES (%s, %s)",
+				   (callback.from_user.id, answer[0]))
+	connection.commit()
+
+	generate_all_answers_on_question_3(callback)
+
+	# Создаю список всех ответов
+	cursor.execute("SELECT answer_all FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1", (callback.from_user.id, ))
+	answers = cursor.fetchone()[0].strip().strip('{}').split(',')
+
+	# Представляю в строковом формате явления
+	cursor.execute("SELECT answer FROM questions_3 WHERE id = %s", (answers[0], ))
+	phenomenon_1 = cursor.fetchone()[0]
+	cursor.execute("SELECT answer FROM questions_3 WHERE id = %s", (answers[1],))
+	phenomenon_2 = cursor.fetchone()[0]
+	cursor.execute("SELECT answer FROM questions_3 WHERE id = %s", (answers[2],))
+	phenomenon_3 = cursor.fetchone()[0]
+	cursor.execute("SELECT answer FROM questions_3 WHERE id = %s", (answers[3],))
+	phenomenon_4 = cursor.fetchone()[0]
+
+	cursor.execute("SELECT question FROM questions_3 WHERE id = (SELECT id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)", (callback.from_user.id, ))
+	fact = cursor.fetchone()[0]
+
+	markup = types.InlineKeyboardMarkup()
+	btn_choise_res_answer_0 = types.InlineKeyboardButton("1️⃣", callback_data="btn_choise_res_answer_0")
+	btn_choise_res_answer_1 = types.InlineKeyboardButton("2️⃣", callback_data="btn_choise_res_answer_1")
+	btn_choise_res_answer_2 = types.InlineKeyboardButton("3️⃣", callback_data="btn_choise_res_answer_2")
+	btn_choise_res_answer_3 = types.InlineKeyboardButton("4️⃣", callback_data="btn_choise_res_answer_3")
+	markup.row(btn_choise_res_answer_0, btn_choise_res_answer_1, btn_choise_res_answer_2, btn_choise_res_answer_3)
+	bot.edit_message_text("ФАКТ\n" + fact + "\n"
+						  "ЯВЛЕНИЯ \n" +
+						  "1. " + phenomenon_1 + "\n"
+						  "2. " + phenomenon_2 + "\n"
+						  "3. " + phenomenon_3 + "\n"
+						  "4. " + phenomenon_4 + "\n",
+						  callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+
+	connection.commit()
+	cursor.close()
+	connection.close()
+
+
 
 @bot.callback_query_handler(func=lambda callback: callback.data.startswith('btn_choise_res_answer_'))
 def result_answer_in_test(callback):
 
 	# Разделяем collback_data вопроса на части по _
 	callback_data = callback.data.split('_')
-	num_true = int(callback_data[-1])
+	num_choise = int(callback_data[-1])
 
 	config = load_config()
 	connection = psycopg2.connect(**config)
@@ -352,40 +526,98 @@ def result_answer_in_test(callback):
 	true = true_plus_all_answers[0]
 	all_answers = true_plus_all_answers[1].strip().strip('{}').split(',')
 
-	if true == all_answers[num_true]:
+	cursor.execute("SELECT selected_questions FROM users WHERE user_id = %s", (callback.from_user.id, ))
+	selected_question = cursor.fetchone()[0]
 
-		cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
-					   "answer_num_all = (SELECT answer_num_all FROM results "
-					   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",(True, callback.from_user.id, callback.from_user.id))
-		connection.commit()
+	if selected_question == 1:
+		if true == all_answers[num_choise]:
 
-		markup = types.InlineKeyboardMarkup()
-		next_question = types.InlineKeyboardButton("Дальше", callback_data="next_question")
-		markup.row(next_question)
-		exit_tests = types.InlineKeyboardButton("Закончить", callback_data="settings_tests")
-		markup.row(exit_tests)
-		bot.edit_message_text('Правильно! ✅', callback.message.chat.id, callback.message.message_id, reply_markup=markup)
-	else:
+			cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
+						   "answer_num_all = (SELECT answer_num_all FROM results "
+						   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",(True, callback.from_user.id, callback.from_user.id))
+			connection.commit()
 
-		cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
-					   "answer_num_all = (SELECT answer_num_all FROM results "
-					   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
-					   (False, callback.from_user.id, callback.from_user.id))
-		cursor.execute("SELECT question FROM questions WHERE id = (SELECT id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)", (callback.from_user.id, ))
-		question = cursor.fetchone()[0]
-		connection.commit()
+			markup = types.InlineKeyboardMarkup()
+			next_question = types.InlineKeyboardButton("Дальше ➡️", callback_data="next_question")
+			markup.row(next_question)
+			exit_tests = types.InlineKeyboardButton("Закончить ⬅️", callback_data="settings_tests")
+			markup.row(exit_tests)
+			bot.edit_message_text('Правильно! ✅', callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+		else:
+
+			cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
+						   "answer_num_all = (SELECT answer_num_all FROM results "
+						   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
+						   (False, callback.from_user.id, callback.from_user.id))
+			cursor.execute("SELECT question FROM questions_1 WHERE id = (SELECT id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)", (callback.from_user.id, ))
+			question = cursor.fetchone()[0]
+			connection.commit()
 
 
-		markup = types.InlineKeyboardMarkup()
-		next_question = types.InlineKeyboardButton("Дальше", callback_data="next_question")
-		markup.row(next_question)
-		exit_tests = types.InlineKeyboardButton("Закончить", callback_data="settings_tests")
-		markup.row(exit_tests)
-		bot.edit_message_text('Ошибка ❌ \n' + question + '\nПравильный ответ - ' + true, callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+			markup = types.InlineKeyboardMarkup()
+			next_question = types.InlineKeyboardButton("Дальше ➡️", callback_data="next_question")
+			markup.row(next_question)
+			exit_tests = types.InlineKeyboardButton("Закончить ⬅️", callback_data="settings_tests")
+			markup.row(exit_tests)
+			bot.edit_message_text('Ошибка ❌ \n' + question + '\nПравильный ответ - ' + true, callback.message.chat.id, callback.message.message_id, reply_markup=markup)
+
+	if selected_question == 3:
+		if int(true) == int(num_choise):
+
+			cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
+						   "answer_num_all = (SELECT answer_num_all FROM results "
+						   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
+						   (True, callback.from_user.id, callback.from_user.id))
+			connection.commit()
+
+			markup = types.InlineKeyboardMarkup()
+			next_question = types.InlineKeyboardButton("Дальше ➡️", callback_data="next_question")
+			markup.row(next_question)
+			exit_tests = types.InlineKeyboardButton("Закончить ⬅️", callback_data="settings_tests")
+			markup.row(exit_tests)
+			bot.edit_message_text('Правильно! ✅', callback.message.chat.id, callback.message.message_id,
+								  reply_markup=markup)
+
+		else:
+
+			cursor.execute("UPDATE results SET correct = %s WHERE user_id = %s AND "
+						   "answer_num_all = (SELECT answer_num_all FROM results "
+						   "WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
+						   (False, callback.from_user.id, callback.from_user.id))
+			cursor.execute(
+				"SELECT question FROM questions_3 WHERE id = (SELECT id FROM results WHERE user_id = %s ORDER BY answer_num_all DESC LIMIT 1)",
+				(callback.from_user.id,))
+			question = cursor.fetchone()[0]
+			cursor.execute("SELECT answer FROM questions_3 WHERE id = %s", (all_answers[int(true)], ))
+			true_answer = cursor.fetchone()[0]
+			connection.commit()
+
+			markup = types.InlineKeyboardMarkup()
+			next_question = types.InlineKeyboardButton("Дальше ➡️", callback_data="next_question")
+			markup.row(next_question)
+			exit_tests = types.InlineKeyboardButton("Закончить ⬅️", callback_data="settings_tests")
+			markup.row(exit_tests)
+			bot.edit_message_text('Ошибка ❌ \n' + question + '\nПравильный ответ - ' + true_answer, callback.message.chat.id,
+								  callback.message.message_id, reply_markup=markup)
+
 
 @bot.callback_query_handler(func=lambda callback: callback.data == 'next_question')
 def next_question(callback):
-	test_send_question_1(callback)
+
+	config = load_config()
+	connection = psycopg2.connect(**config)
+	cursor = connection.cursor()
+
+	cursor.execute("SELECT selected_questions FROM users WHERE user_id = %s", (callback.from_user.id, ))
+	selected_question = cursor.fetchone()[0]
+	if selected_question == 1:
+		test_send_question_1(callback)
+	if selected_question == 3:
+		test_send_question_3(callback)
+
+	connection.commit()
+	cursor.close()
+	connection.close()
 
 # -------------------------------------------------------------------
 
@@ -403,6 +635,7 @@ def choise_profil_in_menu(callback):
 	# Здесь я обнавляю состояние пользователя
 	cursor.execute("UPDATE users SET user_state = %s WHERE user_id = %s", ("profil", callback.from_user.id))
 	connection.commit()
+
 	compilation_of_statistics(callback)
 
 	cursor.execute("SELECT * FROM statistics WHERE user_id = %s", (callback.from_user.id, ))

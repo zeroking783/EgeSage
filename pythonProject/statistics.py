@@ -12,6 +12,7 @@ def compilation_of_statistics(callback):
     cursor = connection.cursor()
 
     df = pd.read_sql_query("SELECT * FROM results WHERE user_id = %s AND correct IS NOT NULL", connection, params=(callback.from_user.id, ))
+    df[['question_id', 'id_num']] = df['id'].str.split('_', expand=True)
 
     total_task_complete = int(df['correct'].count())
     cursor.execute("UPDATE statistics SET total_tasks_completed = %s WHERE user_id = %s", (total_task_complete, callback.from_user.id))
